@@ -178,7 +178,7 @@ def declare_write_vars (arg_list):
     for arg in arg_list:
         if not arg:
             continue
-        item = '    %s %s;\r\n' % (arg[0], arg[1]) 
+        item = '    %s %s;\r\n' % (arg[0], arg[1])
         result += item
     return result
 
@@ -402,7 +402,7 @@ def gen_and_build (build_phase, app_num, user_id, node_sn, node_name, server_ip,
     flash_map = '6'
     flash_spi_speed = '40'
     flash_spi_mode = 'QIO'
-    
+
     ###generate rpc wrapper and registration files
 
     cur_dir = os.path.split(os.path.realpath(__file__))[0]
@@ -461,16 +461,40 @@ def gen_and_build (build_phase, app_num, user_id, node_sn, node_name, server_ip,
 
             my_connections = json_connections['connections']
             for c in my_connections:
-                item = {}
-                item['sku'] = c['sku']
-                item['construct_arg_list'] = interfaces[c['port']]
-                grove = find_grove_in_database("", c['sku'], json_drivers)
-                if grove:
-                    grove_ins = grove['ClassName'] + c['port']
-                    config[grove_ins] = item
+                if isinstance(c['sku'], list):
+                    if not c['port'].startswith('I2C'):
+                        error_msg = 'Only I2C ports can support multiple drivers.'
+                        return False
+
+                    # Not sure if this really applies... I.e., is this code used for anything other than the wio link?
+                    if len(c['sku']) > 3:
+                        error_msg = 'Only 3 I2C modules are supported by the I2C Hub at this time.'
+                        return False
+
+                    cnt = 0
+                    for sku in c['sku']:
+                        item = {}
+                        item['sku'] = sku
+                        item['construct_arg_list'] = interfaces[c['port']]
+                        grove = find_grove_in_database("", sku, json_drivers)
+                        if grove:
+                            grove_ins = grove['ClassName'] + c['port'] + '_' + cnt
+                            config[grove_ins] = item
+                            cnt += 1
+                        else:
+                            error_msg = 'Can not find grove sku %s in drivers database.' % c['sku']
+                            return False
                 else:
-                    error_msg = 'Can not find grove sku %s in drivers database.' % c['sku']
-                    return False
+                    item = {}
+                    item['sku'] = c['sku']
+                    item['construct_arg_list'] = interfaces[c['port']]
+                    grove = find_grove_in_database("", c['sku'], json_drivers)
+                    if grove:
+                        grove_ins = grove['ClassName'] + c['port']
+                        config[grove_ins] = item
+                    else:
+                        error_msg = 'Can not find grove sku %s in drivers database.' % c['sku']
+                        return False
 
             with open('%s/connection_config.yaml' % user_build_dir, 'w') as f:
                 yaml.safe_dump(config, f)
@@ -668,6 +692,3 @@ if __name__ == '__main__':
 
     if not gen_and_build(build_phase, app_num, user_id, node_sn, node_name, server_ip, None, None):
         print get_error_msg()
-
-
-
